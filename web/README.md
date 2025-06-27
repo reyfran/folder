@@ -38,6 +38,7 @@ https://github.com/user-attachments/assets/050bf888-18f8-414d-b1ad-7f8e2f8fced7
 • Universal Search – Instantly find past meetings, notes, and documents.
 
 • Meeting Hub – View and manage past meetings with rich context.
+• `/record` page – Record audio directly in your browser and let the backend transcribe it with Whisper.
 
 • Optimized for Speed – Built upon our SOTA retrieval algorithm called FAFSeach.
 

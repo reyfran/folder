@@ -524,8 +524,22 @@ function SettingsContent() {
     }
   };
 
-  const handlePromptSave = () => {
+  const handlePromptSave = async () => {
     localStorage.setItem("proactivePrompt", proactivePrompt);
+    if (userId) {
+      try {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/user_prompt/${userId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: proactivePrompt }),
+          }
+        );
+      } catch (err) {
+        console.error("Failed to store prompt", err);
+      }
+    }
     toast.success("Prompt saved");
   };
 

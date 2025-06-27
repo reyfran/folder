@@ -7,7 +7,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:800
 export default function LiveTranscriber() {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const recognitionRef = useRef(null);
+  const recorderRef = useRef(null);
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -17,50 +17,47 @@ export default function LiveTranscriber() {
     return () => socket.close();
   }, []);
 
-  const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition not supported in this browser");
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    recognition.onresult = (event) => {
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalText += text + " ";
-        }
-      }
-      if (finalText) {
-        setTranscript((prev) => prev + finalText);
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            type: "transcript_update",
-            data: finalText,
-          }));
-          wsRef.current.send(JSON.stringify({
-            type: "check_suggestion",
-            data: {
-              transcript: finalText,
-              user_id: "mobile-user",
-              isFileUploaded: false,
-              custom_prompt: localStorage.getItem("proactivePrompt") || "",
-            },
-          }));
+  const startListening = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    recorderRef.current = recorder;
+
+    recorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        const res = await fetch(`${BACKEND_URL}/transcribe_audio`, {
+          method: "POST",
+          body: await e.data.arrayBuffer(),
+        });
+        const json = await res.json();
+        if (json.transcript) {
+          setTranscript((prev) => prev + json.transcript + " ");
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({ type: "transcript_update", data: json.transcript })
+            );
+            wsRef.current.send(
+              JSON.stringify({
+                type: "check_suggestion",
+                data: {
+                  transcript: json.transcript,
+                  user_id: "mobile-user",
+                  isFileUploaded: false,
+                  custom_prompt: localStorage.getItem("proactivePrompt") || "",
+                },
+              })
+            );
+          }
         }
       }
     };
-    recognitionRef.current = recognition;
-    recognition.start();
+
+    recorder.start(3000); // send chunks every 3s
     setListening(true);
   };
 
   const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
+    if (recorderRef.current) {
+      recorderRef.current.stop();
     }
     setListening(false);
   };
