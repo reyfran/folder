@@ -1822,7 +1822,7 @@ def find_closest_chunk(query_embedding, chunks_embeddings, chunks):
     return closest_chunks
 
 
-def generate_realtime_suggestion(context, transcript):
+def generate_realtime_suggestion(context, transcript, custom_prompt=None):
     messages = [
         {
             "role": "system",
@@ -1841,7 +1841,7 @@ def generate_realtime_suggestion(context, transcript):
             "content": f"""
                 Information retrieved from user's memory: {context},
                 Latest chunk of the transcript: {transcript},
-                
+                {f'Additional user guidance: {custom_prompt}' if custom_prompt else ''}
 
                 Be super short. Just give some short facts or key words that could help your user to answer the question.
                 Do not use any intro words, like 'Here's the suggestion' etc.
@@ -1865,6 +1865,7 @@ def check_suggestion(request_dict):
         meeting_id = request_dict["meeting_id"]
         user_id = request_dict["user_id"]
         is_file_uploaded = request_dict.get("isFileUploaded", None)
+        custom_prompt = request_dict.get("custom_prompt")
 
         if is_file_uploaded:
             sb_response = supabase.table("meetings").select("context_files, embeddings, chunks, suggestion_count").eq("meeting_id", meeting_id).eq("user_id", user_id).execute().data
@@ -1941,7 +1942,7 @@ def check_suggestion(request_dict):
                 embedded_query = embed_text(last_question)
                 closest_chunks = find_closest_chunk(query_embedding=embedded_query, chunks_embeddings=embedded_chunks, chunks=file_chunks)
 
-                suggestion = generate_realtime_suggestion(context=closest_chunks, transcript=transcript)
+                suggestion = generate_realtime_suggestion(context=closest_chunks, transcript=transcript, custom_prompt=custom_prompt)
 
                 # result = supabase.table("meetings")\
                 #         .update({"suggestion_count": int(sb_response["suggestion_count"]) + 1})\
@@ -1977,7 +1978,7 @@ def check_suggestion(request_dict):
     except ValueError as e:
         return {"error": str(e)}
     except Exception as e:
-        return {"error": f"An unexpected error occurred. Please try again later. bitch: {e}"}
+        return {"error": f"An unexpected error occurred. Please try again later: {e}"}
 
 
 async def sync_meeting_with_supabase(meeting_id: str, user_id: str) -> str:
