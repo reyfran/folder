@@ -61,6 +61,12 @@ function SettingsContent() {
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [isProcessingEmails, setIsProcessingEmails] = useState(false);
   const [emailLabelingEnabled, setEmailLabelingEnabled] = useState(false);
+  const [proactivePrompt, setProactivePrompt] = useState("");
+
+  useEffect(() => {
+    const savedPrompt = localStorage.getItem("proactivePrompt") || "";
+    setProactivePrompt(savedPrompt);
+  }, []);
   const [processedEmailCount, setProcessedEmailCount] = useState(0);
   const [teamName, setTeamName] = useState("");
   const [teamLocation, setTeamLocation] = useState("");
@@ -516,6 +522,25 @@ function SettingsContent() {
       console.error("Error updating email notification settings:", error);
       toast.error("Failed to update email settings");
     }
+  };
+
+  const handlePromptSave = async () => {
+    localStorage.setItem("proactivePrompt", proactivePrompt);
+    if (userId) {
+      try {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/user_prompt/${userId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: proactivePrompt }),
+          }
+        );
+      } catch (err) {
+        console.error("Failed to store prompt", err);
+      }
+    }
+    toast.success("Prompt saved");
   };
 
   const handleGoogleCallback = useCallback(async () => {
@@ -1485,6 +1510,33 @@ function SettingsContent() {
               </Card>
             </div>
           )}
+
+          {/* Proactive Prompt */}
+          <Card className="bg-black border-zinc-800 mt-6">
+            <CardContent className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2 text-white">
+                  <FileText className="w-5 h-5 text-[#9334E9]" />
+                  Proactive Meeting Prompt
+                </h2>
+                <p className="text-sm text-zinc-400">
+                  Guidance for the AI when generating live suggestions.
+                </p>
+              </div>
+              <textarea
+                value={proactivePrompt}
+                onChange={(e) => setProactivePrompt(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-[#9334E9]"
+                rows={4}
+              />
+              <Button
+                className="!bg-[#9334E9] text-[#FAFAFA] hover:!bg-[#3c1671]"
+                onClick={handlePromptSave}
+              >
+                Save Prompt
+              </Button>
+            </CardContent>
+          </Card>
 
           {activeTab === "account" && (
             <>
