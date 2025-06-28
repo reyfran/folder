@@ -9,5 +9,5 @@
       "version": "3.11"
     }
   },
-  "postCreateCommand": "npm install --prefix web && pip install -r backend/requirements.txt"
+
 }
