@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: false,
   async headers() {
+    const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return [
       {
         source: "/(.*)", // applies to all routes
@@ -16,7 +17,7 @@ const nextConfig = {
           },
           {
             key: "Access-Control-Allow-Origin",
-            value: "https://app.amurex.ai, http://localhost:3000", // Restrict to your own domain
+            value: allowedOrigin, // Restrict to your own domain
           },
           {
             key: "Access-Control-Allow-Methods",
