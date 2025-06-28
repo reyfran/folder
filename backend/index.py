@@ -172,6 +172,20 @@ class AIClientAdapter:
 
                 return response
 
+    def transcribe_audio(self, audio_bytes):
+        """Transcribe raw audio bytes using Whisper."""
+        if self.client_mode != "ONLINE":
+            return ""
+        with BytesIO(audio_bytes) as f:
+            f.name = "audio.webm"
+            response = self.openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="text",
+                language="id"
+            )
+            return response
+
 class EmbeddingAdapter:
     def __init__(self, client_mode):
         self.client_mode = client_mode
@@ -1547,6 +1561,32 @@ async def upload_meeting_file(request):
     }
 
 
+@app.post("/transcribe_audio")
+async def transcribe_audio(request: Request):
+    """Receive raw audio and return the Whisper transcription."""
+    audio = request.body
+    try:
+        transcript = ai_client.transcribe_audio(audio)
+        return {"transcript": transcript}
+    except Exception as e:
+        logger.error(f"Transcription failed: {str(e)}", exc_info=True)
+        return {"error": str(e)}
+
+
+@app.post("/user_prompt/:user_id")
+async def user_prompt(request):
+    """Persist proactive prompt for a user."""
+    user_id = request.path_params.get("user_id")
+    data = json.loads(request.body)
+    prompt = data.get("prompt", "")
+    try:
+        supabase.table("users").update({"proactive_prompt": prompt}).eq("id", user_id).execute()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Failed to save prompt: {str(e)}", exc_info=True)
+        return {"error": str(e)}
+
+
 class TranscriptRequest(Body):
     transcript: str
     meeting_id: str
@@ -1822,7 +1862,7 @@ def find_closest_chunk(query_embedding, chunks_embeddings, chunks):
     return closest_chunks
 
 
-def generate_realtime_suggestion(context, transcript):
+def generate_realtime_suggestion(context, transcript, custom_prompt=None):
     messages = [
         {
             "role": "system",
@@ -1834,6 +1874,7 @@ def generate_realtime_suggestion(context, transcript):
                 - They need to recall something from their memory (e.g. 'what was the company you told us about 3 weeks ago?')
                 
                 You have to generate the most important suggestion or help for a user based on the information retrieved from user's memory and latest transcript chunk.
+                Always reply in Indonesian.
             """
         },
         {
@@ -1841,7 +1882,7 @@ def generate_realtime_suggestion(context, transcript):
             "content": f"""
                 Information retrieved from user's memory: {context},
                 Latest chunk of the transcript: {transcript},
-                
+                {f'Additional user guidance: {custom_prompt}' if custom_prompt else ''}
 
                 Be super short. Just give some short facts or key words that could help your user to answer the question.
                 Do not use any intro words, like 'Here's the suggestion' etc.
@@ -1865,6 +1906,7 @@ def check_suggestion(request_dict):
         meeting_id = request_dict["meeting_id"]
         user_id = request_dict["user_id"]
         is_file_uploaded = request_dict.get("isFileUploaded", None)
+        custom_prompt = request_dict.get("custom_prompt")
 
         if is_file_uploaded:
             sb_response = supabase.table("meetings").select("context_files, embeddings, chunks, suggestion_count").eq("meeting_id", meeting_id).eq("user_id", user_id).execute().data
@@ -1902,7 +1944,7 @@ def check_suggestion(request_dict):
             messages_list = [
                 {
                     "role": "system",
-                    "content": """You are a personal online meeting copilot, and your task is to detect if a speaker needs help during a call. 
+                    "content": """You are a personal online meeting copilot, and your task is to detect if a speaker needs help during a call.
 
                         Possible cases when user needs help in real time:
                         - They need to recall something from their memory (e.g. 'what was the company you told us about 3 weeks ago?')
@@ -1916,6 +1958,7 @@ def check_suggestion(request_dict):
                         
                         You are strictly required to follow this JSON structure:
                         {"needs_help":true/false, "last_question": json null or the last question}
+                        Jawablah dalam bahasa Indonesia.
                     """
                 },
                 {
@@ -1941,7 +1984,7 @@ def check_suggestion(request_dict):
                 embedded_query = embed_text(last_question)
                 closest_chunks = find_closest_chunk(query_embedding=embedded_query, chunks_embeddings=embedded_chunks, chunks=file_chunks)
 
-                suggestion = generate_realtime_suggestion(context=closest_chunks, transcript=transcript)
+                suggestion = generate_realtime_suggestion(context=closest_chunks, transcript=transcript, custom_prompt=custom_prompt)
 
                 # result = supabase.table("meetings")\
                 #         .update({"suggestion_count": int(sb_response["suggestion_count"]) + 1})\
@@ -1977,7 +2020,7 @@ def check_suggestion(request_dict):
     except ValueError as e:
         return {"error": str(e)}
     except Exception as e:
-        return {"error": f"An unexpected error occurred. Please try again later. bitch: {e}"}
+        return {"error": f"An unexpected error occurred. Please try again later: {e}"}
 
 
 async def sync_meeting_with_supabase(meeting_id: str, user_id: str) -> str:
